@@ -1,0 +1,24 @@
+{
+  "name": "who-am-i",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A Jackbox-style multiplayer 'Who Am I?' guessing party game.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "build": "npm --prefix client install --no-audit --no-fund && npm --prefix client run build",
+    "dev:server": "node --watch server/index.js",
+    "dev:client": "npm --prefix client run dev",
+    "dev": "concurrently -n server,client -c blue,magenta \"npm run dev:server\" \"npm run dev:client\""
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1"
+  }
+}

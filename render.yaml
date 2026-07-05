@@ -1,0 +1,13 @@
+# Render Blueprint — one free web service that builds the client and serves it
+# alongside the Socket.IO server. Push to GitHub, then in Render:
+# New + → Blueprint → pick this repo. Free tier sleeps after ~15 min idle.
+services:
+  - type: web
+    name: who-am-i
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: "20.18.0"
