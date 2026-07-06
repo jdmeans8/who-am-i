@@ -6,12 +6,18 @@ import react from "@vitejs/plugin-react";
 // built files directly, so the socket connects to the same origin.
 export default defineConfig({
   plugins: [react()],
+  // Load env (VITE_* only) from the project root, so there's a single .env file.
+  envDir: "..",
   server: {
     port: 5173,
     proxy: {
       "/socket.io": {
         target: "http://localhost:3001",
         ws: true,
+        changeOrigin: true,
+      },
+      "/api": {
+        target: "http://localhost:3001",
         changeOrigin: true,
       },
     },

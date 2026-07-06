@@ -3,7 +3,7 @@
 // these methods and broadcasts a per-player redacted view via buildStateFor().
 
 import { randomUUID } from "node:crypto";
-import { CHARACTERS, slugify, getCharacter } from "./characters.js";
+import { CLASSIC_SET } from "./sets.js";
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no confusable chars
 const MAX_PLAYERS = 8;
@@ -75,10 +75,12 @@ function shuffle(arr) {
 // ---------- Room ----------
 
 class Room {
-  constructor(code) {
+  constructor(code, set = CLASSIC_SET) {
     this.code = code;
     this.hostId = null;
     this.players = new Map(); // playerId -> player (insertion order = seat order)
+    this.set = { id: set.id, title: set.title };
+    this.items = set.items; // [{ name, aliases, image }]
     this.settings = { totalRounds: 3 };
     this.phase = "lobby"; // lobby | round | roundSummary | gameOver
     this.round = null;
@@ -140,14 +142,14 @@ class Room {
     if (players.length < MIN_PLAYERS) {
       throw new GameError(`Need at least ${MIN_PLAYERS} players to start.`);
     }
-    if (players.length > CHARACTERS.length) {
-      throw new GameError("Not enough characters in the pool.");
+    if (players.length > this.items.length) {
+      throw new GameError("This set doesn't have enough characters for that many players.");
     }
 
     const number = this.round ? this.round.number + 1 : 1;
-    const picks = shuffle(CHARACTERS).slice(0, players.length);
-    const assignments = new Map(); // playerId -> characterId
-    players.forEach((p, i) => assignments.set(p.id, slugify(picks[i].name)));
+    const picks = shuffle(this.items).slice(0, players.length);
+    const assignments = new Map(); // playerId -> item { name, aliases, image }
+    players.forEach((p, i) => assignments.set(p.id, picks[i]));
 
     this.round = {
       number,
@@ -261,12 +263,12 @@ class Room {
     if (playerId !== r.pending.askerId) throw new GameError("Only the asker can guess now.");
     if (!r.pending.revealed) throw new GameError("Wait for everyone to answer first.");
 
-    const character = getCharacter(r.assignments.get(playerId));
-    const correct = character ? guessMatches(text, character) : false;
+    const item = r.assignments.get(playerId);
+    const correct = item ? guessMatches(text, item) : false;
     let result;
     if (correct) {
       r.finishedOrder.push(playerId);
-      result = { correct: true, character: character.name };
+      result = { correct: true, character: item.name };
     } else {
       result = { correct: false }; // no penalty
     }
@@ -312,12 +314,14 @@ class Room {
         points = orderPts + bonus;
       }
       if (p) p.score += points;
+      const item = r.assignments.get(id);
       results.push({
         playerId: id,
         name: p ? p.name : "?",
         placement: placement >= 0 ? placement + 1 : null,
         questions: r.questionsAsked.get(id) || 0,
-        character: getCharacter(r.assignments.get(id))?.name || "?",
+        character: item?.name || "?",
+        image: item?.image || null,
         points,
         total: p ? p.score : 0,
       });
@@ -400,6 +404,7 @@ class Room {
       phase: this.phase,
       youId: viewerId,
       hostId: this.hostId,
+      set: { ...this.set },
       settings: { ...this.settings },
       players: this.playerList().map((p) => ({
         id: p.id,
@@ -426,13 +431,15 @@ class Room {
           const finished = this.isFinished(id);
           // A viewer sees a character if: it's not their own, OR they've finished, OR round is over.
           const canSee = revealAll || finished || id !== viewerId;
+          const item = r.assignments.get(id);
           return {
             playerId: id,
             name: p.name,
             connected: p.connected,
             finished,
             isCurrentTurn: id === currentTurnId,
-            character: canSee ? getCharacter(r.assignments.get(id))?.name || null : null,
+            character: canSee ? item?.name || null : null,
+            image: canSee ? item?.image || null : null,
           };
         });
 
@@ -485,8 +492,8 @@ export function createRoomManager() {
     return code;
   }
 
-  function createRoom() {
-    const room = new Room(genCode());
+  function createRoom(set) {
+    const room = new Room(genCode(), set);
     rooms.set(room.code, room);
     return room;
   }

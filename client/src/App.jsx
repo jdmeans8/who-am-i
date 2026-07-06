@@ -1,12 +1,21 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { socket, emit, saveSession, loadSession, clearSession } from "./socket.js";
-import Home from "./screens/Home.jsx";
+import { AuthProvider } from "./auth.jsx";
+import Menu from "./screens/Menu.jsx";
 import Lobby from "./screens/Lobby.jsx";
 import Game from "./screens/Game.jsx";
 import Summary from "./screens/Summary.jsx";
 import Toast from "./components/Toast.jsx";
 
 export default function App() {
+  return (
+    <AuthProvider>
+      <Shell />
+    </AuthProvider>
+  );
+}
+
+function Shell() {
   const [state, setState] = useState(null);
   const [connected, setConnected] = useState(socket.connected);
   const [toast, setToast] = useState(null);
@@ -19,7 +28,6 @@ export default function App() {
   useEffect(() => {
     function onConnect() {
       setConnected(true);
-      // Attempt to rejoin a saved seat once per page load.
       if (!resumedRef.current) {
         resumedRef.current = true;
         const session = loadSession();
@@ -58,7 +66,6 @@ export default function App() {
     };
   }, [showToast]);
 
-  // Generic action helper — emits, surfaces errors as a toast, returns the ack.
   const action = useCallback(
     async (event, payload = {}) => {
       const res = await emit(event, payload);
@@ -76,7 +83,7 @@ export default function App() {
 
   let screen;
   if (!state) {
-    screen = <Home action={action} />;
+    screen = <Menu action={action} showToast={showToast} />;
   } else if (state.phase === "lobby") {
     screen = <Lobby state={state} action={action} leave={leave} />;
   } else if (state.phase === "round") {
