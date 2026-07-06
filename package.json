@@ -5,7 +5,7 @@
   "type": "module",
   "description": "A Jackbox-style multiplayer 'Who Am I?' guessing party game.",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "start": "node server/index.js",

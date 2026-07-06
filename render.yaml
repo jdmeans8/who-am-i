@@ -10,7 +10,7 @@ services:
     startCommand: npm start
     envVars:
       - key: NODE_VERSION
-        value: "20.18.0"
+        value: "22.11.0"
       # Set these in the Render dashboard (Environment) on first deploy.
       # VITE_* are read at build time; SUPABASE_SECRET_KEY is server-only.
       - key: SUPABASE_URL
