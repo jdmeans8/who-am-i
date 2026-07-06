@@ -5,10 +5,14 @@ _can't_ see. On your turn you ask the group one yes/no question; everyone else
 (who can see your character) answers. Deduce who you are, guess, and race to the
 top of the leaderboard. Up to 8 players, plays in the same room or fully remote.
 
+Play the built-in **Classic** set, or sign in to **create your own character
+sets** (with uploaded images) and **browse/play** sets others have shared.
+
 ## Tech
 
 - **Server:** Node + Express + Socket.IO (authoritative in-memory game state)
 - **Client:** React + Vite, mobile-first
+- **Supabase:** Postgres (user sets), Storage (images), Auth (Google + email)
 - Single origin in production — the server serves the built client.
 
 ## Run it locally
@@ -22,6 +26,10 @@ npm run dev          # runs server (:3001) and client (:5173) together
 Then open **http://localhost:5173**. To play across phones on the same Wi-Fi,
 open `http://<your-computer-ip>:5173` on each device.
 
+**For auth + user sets locally**, copy `.env.example` to `.env` and fill in your
+Supabase values (see [DEPLOY.md](DEPLOY.md) for what each one is). Without a
+`.env`, the core game still works on the built-in Classic set.
+
 For a production-style run (single port):
 
 ```bash
@@ -29,16 +37,13 @@ npm run build
 npm start            # serves everything on http://localhost:3001
 ```
 
-## Deploy to Render (free)
+## Deploy
 
-1. Push this folder to a GitHub repo.
-2. On [Render](https://render.com): **New + → Blueprint**, select the repo.
-   `render.yaml` sets it up as one free web service.
-3. You get a URL like `https://who-am-i.onrender.com`. Share it and play.
-
-Notes on the free tier: the service sleeps after ~15 min idle, so the first
-visitor after a quiet spell waits ~30–60s for it to wake. Game state lives in
-memory, so a restart clears any in-progress rooms.
+See **[DEPLOY.md](DEPLOY.md)** for the full step-by-step (Render blueprint +
+Supabase env vars + auth redirect URLs). In short: push to GitHub → Render
+**New + → Blueprint** → paste the four Supabase env vars → add your Render URL to
+Supabase's redirect list. Free tier sleeps after ~15 min idle (first hit wakes it
+in ~30–60s); in-memory rooms reset on redeploy, but accounts/sets persist.
 
 ## Gameplay rules
 

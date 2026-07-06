@@ -11,3 +11,13 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "20.18.0"
+      # Set these in the Render dashboard (Environment) on first deploy.
+      # VITE_* are read at build time; SUPABASE_SECRET_KEY is server-only.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_PUBLISHABLE_KEY
+        sync: false

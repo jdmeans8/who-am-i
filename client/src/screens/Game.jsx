@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import CharacterImage from "../components/CharacterImage.jsx";
 
 export default function Game({ state, action, leave }) {
   const r = state.round;
@@ -64,6 +65,7 @@ function Board({ board, youId }) {
     <div className="board">
       {board.map((b) => {
         const isYou = b.playerId === youId;
+        const hidden = b.character === null;
         return (
           <div
             key={b.playerId}
@@ -75,8 +77,9 @@ function Board({ board, youId }) {
               b.connected ? "" : "offline",
             ].join(" ")}
           >
+            <CharacterImage name={b.character} image={b.image} hidden={hidden} />
             <div className="char-name">
-              {b.character ? b.character : isYou ? "❓ You" : "❓"}
+              {hidden ? (isYou ? "You" : "❓") : b.character}
             </div>
             <div className="char-owner">
               {b.name}

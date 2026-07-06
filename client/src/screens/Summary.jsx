@@ -1,4 +1,5 @@
 import React from "react";
+import CharacterImage from "../components/CharacterImage.jsx";
 
 export default function Summary({ state, action, leave }) {
   const r = state.round;
@@ -34,6 +35,7 @@ export default function Summary({ state, action, leave }) {
                 {res.playerId === state.youId && <span className="tag tag-you">you</span>}
               </span>
               <span className="sb-detail">
+                <CharacterImage name={res.character} image={res.image} size="sm" />
                 was <strong>{res.character}</strong>
                 {res.placement ? ` · solved #${res.placement}` : " · didn't solve"}
                 {` · ${res.questions}Q`}

@@ -17,6 +17,8 @@ export default function Lobby({ state, action, leave }) {
         <span className="room-code-hint">tap to copy</span>
       </div>
 
+      {state.set && <p className="set-line">Set: <strong>{state.set.title}</strong></p>}
+
       <div className="card">
         <h2>Players ({state.players.length}/{state.maxPlayers})</h2>
         <ul className="player-list">
