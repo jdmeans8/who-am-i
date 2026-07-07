@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { api } from "../api.js";
+import CharacterImage from "../components/CharacterImage.jsx";
 
 export default function Lobby({ state, action, leave }) {
   const you = state.players.find((p) => p.id === state.youId);
   const isHost = you?.isHost;
   const enough = state.players.length >= state.minPlayers;
+  const hiddenCount = state.setSize - state.inPlayCount;
   const anyScores = state.players.some((p) => p.score > 0);
   const ranked = [...state.players].sort((a, b) => b.score - a.score);
 
@@ -20,7 +22,12 @@ export default function Lobby({ state, action, leave }) {
         <span className="room-code-hint">tap to copy</span>
       </div>
 
-      {state.set && <p className="set-line">Set: <strong>{state.set.title}</strong></p>}
+      {state.set && (
+        <p className="set-line">
+          Set: <strong>{state.set.title}</strong>
+          {hiddenCount > 0 && <span className="muted"> · {state.inPlayCount} in play</span>}
+        </p>
+      )}
 
       <div className="card">
         <h2>Players ({state.players.length}/{state.maxPlayers})</h2>
@@ -40,7 +47,12 @@ export default function Lobby({ state, action, leave }) {
       {isHost ? (
         <HostControls state={state} action={action} enough={enough} anyScores={anyScores} />
       ) : (
-        <p className="waiting">Waiting for the host to start…</p>
+        <>
+          {hiddenCount > 0 && (
+            <p className="waiting small">The host has hidden {hiddenCount} character{hiddenCount === 1 ? "" : "s"}.</p>
+          )}
+          <p className="waiting">Waiting for the host to start…</p>
+        </>
       )}
 
       <button className="btn btn-ghost" onClick={leave}>
@@ -53,6 +65,7 @@ export default function Lobby({ state, action, leave }) {
 function HostControls({ state, action, enough, anyScores }) {
   const [sets, setSets] = useState(null);
   const [changing, setChanging] = useState(false);
+  const enoughChars = state.inPlayCount >= state.players.length;
 
   useEffect(() => {
     api.listSets({}).then((d) => setSets(d.sets)).catch(() => setSets([]));
@@ -98,8 +111,18 @@ function HostControls({ state, action, enough, anyScores }) {
         </select>
       </label>
 
-      <button className="btn btn-primary" disabled={!enough} onClick={() => action("startGame")}>
-        {enough ? "Start game" : `Need ${state.minPlayers}+ players`}
+      {state.roster && <RosterPanel roster={state.roster} inPlay={state.inPlayCount} action={action} />}
+
+      <button
+        className="btn btn-primary"
+        disabled={!enough || !enoughChars}
+        onClick={() => action("startGame")}
+      >
+        {!enough
+          ? `Need ${state.minPlayers}+ players`
+          : !enoughChars
+          ? "Un-hide some characters"
+          : "Start game"}
       </button>
 
       {anyScores && (
@@ -108,5 +131,30 @@ function HostControls({ state, action, enough, anyScores }) {
         </button>
       )}
     </div>
+  );
+}
+
+function RosterPanel({ roster, inPlay, action }) {
+  const hidden = roster.length - inPlay;
+  return (
+    <details className="roster-panel">
+      <summary>
+        Characters — {inPlay} in play{hidden > 0 ? `, ${hidden} hidden` : ""}
+      </summary>
+      <p className="muted small">Tap a character to hide it from this game.</p>
+      <div className="roster-grid">
+        {roster.map((c) => (
+          <button
+            key={c.name}
+            className={`roster-chip ${c.excluded ? "excluded" : ""}`}
+            onClick={() => action("toggleExclude", { name: c.name })}
+            title={c.excluded ? "Hidden — tap to include" : "In play — tap to hide"}
+          >
+            <CharacterImage name={c.name} image={c.image} size="sm" />
+            <span className="roster-name">{c.name}</span>
+          </button>
+        ))}
+      </div>
+    </details>
   );
 }

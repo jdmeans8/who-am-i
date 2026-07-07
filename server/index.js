@@ -327,6 +327,7 @@ io.on("connection", (socket) => {
     }
   });
   socket.on("resetScores", (_p, ack) => handle(socket, ack, (room, player) => room.resetScores(player.id)));
+  socket.on("toggleExclude", ({ name } = {}, ack) => handle(socket, ack, (room, player) => room.toggleExclude(player.id, name)));
   socket.on("ask", ({ text } = {}, ack) => handle(socket, ack, (room, player) => room.askQuestion(player.id, text)));
   socket.on("answer", ({ value } = {}, ack) => handle(socket, ack, (room, player) => room.answer(player.id, value)));
   socket.on("guess", ({ text } = {}, ack) => handle(socket, ack, (room, player) => room.guess(player.id, text)));

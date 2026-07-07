@@ -85,6 +85,7 @@ class Room {
     this.phase = "lobby"; // lobby | round (active game) | gameOver
     this.round = null; // active game's play state (null in lobby)
     this.gameNumber = 0; // games played this session (for display)
+    this.excluded = new Set(); // character names the host has hidden from this set
     this.createdAt = Date.now();
     this.lastActivity = Date.now();
   }
@@ -140,6 +141,17 @@ class Room {
     if (this.phase !== "lobby") throw new GameError("Change the set from the lobby.");
     this.set = { id: set.id, title: set.title };
     this.items = set.items;
+    this.excluded = new Set(); // new set → fresh roster
+    this.touch();
+  }
+
+  // Host hides/shows a character (by name) from the current set. Lobby only.
+  toggleExclude(byId, name) {
+    if (byId !== this.hostId) throw new GameError("Only the host can hide characters.");
+    if (this.phase !== "lobby") throw new GameError("Hide characters from the lobby.");
+    if (!this.items.some((it) => it.name === name)) throw new GameError("That character isn't in this set.");
+    if (this.excluded.has(name)) this.excluded.delete(name);
+    else this.excluded.add(name);
     this.touch();
   }
 
@@ -150,12 +162,15 @@ class Room {
     if (players.length < MIN_PLAYERS) {
       throw new GameError(`Need at least ${MIN_PLAYERS} players to start.`);
     }
-    if (players.length > this.items.length) {
-      throw new GameError("This set doesn't have enough characters for that many players.");
+    const available = this.items.filter((it) => !this.excluded.has(it.name));
+    if (players.length > available.length) {
+      throw new GameError(
+        `Only ${available.length} character${available.length === 1 ? "" : "s"} in play — need at least ${players.length}. Un-hide some.`
+      );
     }
 
     this.gameNumber += 1;
-    const picks = shuffle(this.items).slice(0, players.length);
+    const picks = shuffle(available).slice(0, players.length);
     const assignments = new Map(); // playerId -> item { name, aliases, image }
     players.forEach((p, i) => assignments.set(p.id, picks[i]));
 
@@ -489,7 +504,19 @@ class Room {
       round: null,
       minPlayers: MIN_PLAYERS,
       maxPlayers: MAX_PLAYERS,
+      setSize: this.items.length,
+      inPlayCount: this.items.length - this.excluded.size,
     };
+
+    // In the lobby, the host gets the full roster with hide/show flags so they
+    // can curate which characters are dealt. Other players never see it.
+    if (this.phase === "lobby" && viewerId === this.hostId) {
+      state.roster = this.items.map((it) => ({
+        name: it.name,
+        image: it.image,
+        excluded: this.excluded.has(it.name),
+      }));
+    }
 
     if (this.round && (this.phase === "round" || this.phase === "gameOver")) {
       const r = this.round;
