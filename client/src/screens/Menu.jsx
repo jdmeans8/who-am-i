@@ -27,6 +27,7 @@ export default function Menu({ action, showToast }) {
           onBack={() => go("browse")}
           onPlay={(setId) => go("create", { setId })}
           onEdit={(id) => go("builder", { editId: id })}
+          onRemixed={(newId) => go("builder", { editId: newId })}
           showToast={showToast}
         />
       );

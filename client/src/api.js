@@ -30,4 +30,8 @@ export const api = {
     fd.append("image", file);
     return req(`/api/upload`, { method: "POST", body: fd });
   },
+  remixSet: (id) => req(`/api/sets/${id}/remix`, { method: "POST", json: {} }),
+  imageSources: () => req(`/api/image-search/sources`),
+  imageSearch: (q, source) => req(`/api/image-search?${new URLSearchParams({ q, source })}`),
+  importImage: (url) => req(`/api/import-image`, { method: "POST", json: { url } }),
 };

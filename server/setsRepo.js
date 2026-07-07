@@ -173,6 +173,28 @@ export async function createSetWithItems({
   return set.id;
 }
 
+// Clone an existing set (built-in or public) into a new private set owned by
+// `userId`, so they can tweak it. Item image_paths are referenced as-is (they
+// live in the original owner's folder but the bucket is public).
+export async function remixSet(setId, userId, userName) {
+  const detail = await getSetDetail(setId);
+  if (!detail) throw httpError("That set couldn't be found.", 404);
+  const items = (detail.items || []).map((it) => ({
+    name: it.name,
+    aliases: it.aliases || [],
+    image_path: it.image_path || null,
+  }));
+  if (items.length < 2) throw httpError("That set has too few characters to remix.", 400);
+  return createSetWithItems({
+    title: `${detail.title} (remix)`.slice(0, 60),
+    description: detail.description || null,
+    isPublic: false,
+    creatorId: userId,
+    creatorName: userName,
+    items,
+  });
+}
+
 export async function deleteSet(setId, userId = null) {
   const sb = getSupabase();
   if (!sb) throw new Error("Set storage is not configured.");

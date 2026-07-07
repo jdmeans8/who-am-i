@@ -34,7 +34,9 @@ import {
   toggleLike,
   reportSet,
   uploadImageBuffer,
+  remixSet,
 } from "./setsRepo.js";
+import { searchImages, importImageFromUrl, giphyConfigured } from "./imageSearch.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3001;
@@ -151,6 +153,42 @@ app.post("/api/upload", requireUser, upload.single("image"), async (req, res) =>
     if (err instanceof Error && /unsupported image|Input buffer/.test(err.message)) {
       return res.status(400).json({ error: "That file doesn't look like an image." });
     }
+    sendErr(res, err);
+  }
+});
+
+// Which image-search sources are available (client hides the Giphy tab if not).
+app.get("/api/image-search/sources", (_req, res) => {
+  res.json({ sources: ["wikipedia", ...(giphyConfigured() ? ["giphy"] : [])] });
+});
+
+// Proxy an image search so keys stay server-side and CORS isn't an issue.
+app.get("/api/image-search", requireUser, async (req, res) => {
+  try {
+    const results = await searchImages({ q: req.query.q, source: req.query.source });
+    res.json({ results });
+  } catch (err) {
+    sendErr(res, err);
+  }
+});
+
+// Import a remote image (search pick or pasted URL) into the user's storage.
+app.post("/api/import-image", requireUser, async (req, res) => {
+  try {
+    const url = String(req.body?.url || "").trim();
+    if (!url) return res.status(400).json({ error: "No image URL was provided." });
+    res.json(await importImageFromUrl(req.user.id, url));
+  } catch (err) {
+    sendErr(res, err);
+  }
+});
+
+// Duplicate an existing set into the caller's own (private) sets to edit.
+app.post("/api/sets/:id/remix", requireUser, async (req, res) => {
+  try {
+    const id = await remixSet(req.params.id, req.user.id, displayName(req.user));
+    res.json({ id });
+  } catch (err) {
     sendErr(res, err);
   }
 });

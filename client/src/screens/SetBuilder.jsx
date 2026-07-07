@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { useAuth } from "../auth.jsx";
 import CharacterImage from "../components/CharacterImage.jsx";
+import ImagePicker from "../components/ImagePicker.jsx";
 
 const blank = () => ({ name: "", aliases: "", image_path: null, image_url: null, uploading: false });
 
@@ -13,6 +14,8 @@ export default function SetBuilder({ editId, onBack, onSaved, showToast }) {
   const [items, setItems] = useState([blank(), blank()]);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(!!editId);
+  const [bulk, setBulk] = useState("");
+  const [pickerIdx, setPickerIdx] = useState(null);
 
   useEffect(() => {
     if (!editId) return;
@@ -52,6 +55,34 @@ export default function SetBuilder({ editId, onBack, onSaved, showToast }) {
       showToast?.(e.message);
       patch(idx, { uploading: false });
     }
+  }
+
+  // Import a remote image (from search pick or pasted URL) into our storage and
+  // attach it to the row. Throws so the picker can surface the error.
+  async function importForRow(idx, url) {
+    const { path, url: publicUrl } = await api.importImage(url);
+    patch(idx, { image_path: path, image_url: publicUrl });
+  }
+
+  // Turn a pasted list (newlines or commas) into character rows, filling blanks
+  // first so the two starter rows aren't left empty above the additions.
+  function addBulk() {
+    const names = bulk
+      .split(/[\n,]+/)
+      .map((n) => n.trim())
+      .filter(Boolean);
+    if (!names.length) return;
+    setItems((its) => {
+      const next = its.map((it) => ({ ...it }));
+      for (const name of names) {
+        const empty = next.find((it) => !it.name.trim() && !it.image_path);
+        if (empty) empty.name = name.slice(0, 60);
+        else next.push({ ...blank(), name: name.slice(0, 60) });
+      }
+      return next;
+    });
+    setBulk("");
+    showToast?.(`Added ${names.length} character${names.length === 1 ? "" : "s"}.`);
   }
 
   async function save() {
@@ -106,23 +137,38 @@ export default function SetBuilder({ editId, onBack, onSaved, showToast }) {
         </label>
       </div>
 
+      <details className="card bulk-add">
+        <summary>⚡ Add many at once</summary>
+        <p className="muted small">Paste names separated by new lines or commas — one character each.</p>
+        <textarea
+          className="bulk-text"
+          rows={4}
+          value={bulk}
+          onChange={(e) => setBulk(e.target.value)}
+          placeholder={"Homer Simpson\nBeyoncé\nPikachu"}
+        />
+        <button className="btn" disabled={!bulk.trim()} onClick={addBulk}>
+          + Add these
+        </button>
+      </details>
+
       <div className="stack">
         {items.map((it, idx) => (
           <div key={idx} className="builder-row card">
-            <label className="thumb-pick" title="Add image">
-              {it.uploading ? (
-                <div className="char-img char-img-md char-img-hidden">…</div>
-              ) : (
-                <CharacterImage name={it.name || "?"} image={it.image_url} size="md" />
-              )}
-              <input
-                type="file"
-                accept="image/*"
-                hidden
-                onChange={(e) => pickImage(idx, e.target.files?.[0])}
-              />
-              <span className="thumb-hint">{it.image_url ? "change" : "add photo"}</span>
-            </label>
+            <div className="thumb-col">
+              <label className="thumb-pick" title="Upload image">
+                {it.uploading ? (
+                  <div className="char-img char-img-md char-img-hidden">…</div>
+                ) : (
+                  <CharacterImage name={it.name || "?"} image={it.image_url} size="md" />
+                )}
+                <input type="file" accept="image/*" hidden onChange={(e) => pickImage(idx, e.target.files?.[0])} />
+                <span className="thumb-hint">{it.image_url ? "change" : "upload"}</span>
+              </label>
+              <button className="btn btn-ghost small thumb-search" onClick={() => setPickerIdx(idx)}>
+                🔍 Search
+              </button>
+            </div>
             <div className="builder-fields">
               <input
                 maxLength={60}
@@ -155,6 +201,15 @@ export default function SetBuilder({ editId, onBack, onSaved, showToast }) {
       <button className="btn btn-primary" disabled={saving} onClick={save}>
         {saving ? "Saving…" : editId ? "Save changes" : "Create set"}
       </button>
+
+      {pickerIdx !== null && (
+        <ImagePicker
+          initialQuery={items[pickerIdx]?.name || ""}
+          onPick={(url) => importForRow(pickerIdx, url)}
+          onClose={() => setPickerIdx(null)}
+          showToast={showToast}
+        />
+      )}
     </div>
   );
 }

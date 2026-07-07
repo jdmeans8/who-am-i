@@ -3,10 +3,11 @@ import { api } from "../api.js";
 import { useAuth } from "../auth.jsx";
 import CharacterImage from "../components/CharacterImage.jsx";
 
-export default function SetDetail({ id, onBack, onPlay, onEdit, showToast }) {
+export default function SetDetail({ id, onBack, onPlay, onEdit, onRemixed, showToast }) {
   const { user } = useAuth();
   const [set, setSet] = useState(null);
   const [liked, setLiked] = useState(false);
+  const [remixing, setRemixing] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -27,6 +28,20 @@ export default function SetDetail({ id, onBack, onPlay, onEdit, showToast }) {
       setSet((s) => ({ ...s, like_count: r.likeCount }));
     } catch (e) {
       showToast?.(e.message);
+    }
+  }
+
+  async function remix() {
+    if (!user) return showToast?.("Sign in to remix sets.");
+    setRemixing(true);
+    try {
+      const { id: newId } = await api.remixSet(id);
+      showToast?.("Copied to your sets — customize away!");
+      onRemixed?.(newId);
+    } catch (e) {
+      showToast?.(e.message);
+    } finally {
+      setRemixing(false);
     }
   }
 
@@ -70,9 +85,13 @@ export default function SetDetail({ id, onBack, onPlay, onEdit, showToast }) {
               {liked ? "♥ Liked" : "♡ Like"} {set.like_count ? `(${set.like_count})` : ""}
             </button>
           )}
-          {isOwner && (
+          {isOwner ? (
             <button className="btn" onClick={() => onEdit(set.id)}>
               Edit
+            </button>
+          ) : (
+            <button className="btn" disabled={remixing} onClick={remix}>
+              {remixing ? "Copying…" : "⎘ Remix"}
             </button>
           )}
         </div>
