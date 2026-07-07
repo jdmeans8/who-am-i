@@ -7,6 +7,8 @@ import { getSupabase } from "./supabase.js";
 import { getSetById as getBuiltInSet, listBuiltInSets, CLASSIC_SET } from "./sets.js";
 
 const BUCKET = "character-images";
+const REPORT_THRESHOLD = 3; // distinct reporters that auto-hide a set
+const UPLOAD_QUOTA = 200; // images a single user may store
 
 function httpError(message, status) {
   const e = new Error(message);
@@ -285,12 +287,30 @@ export async function reportSet(setId, userId, reason) {
     reason: reason ? String(reason).slice(0, 500) : null,
   });
   if (error) throw error;
+
+  // Auto-hide once enough *distinct* users have flagged it (one user spamming
+  // reports can't take a set down alone). Only touch currently-active sets.
+  const { data: rows } = await sb.from("reports").select("reporter_id").eq("set_id", setId);
+  const distinct = new Set((rows || []).map((r) => r.reporter_id).filter(Boolean));
+  if (distinct.size >= REPORT_THRESHOLD) {
+    await sb.from("sets").update({ status: "hidden" }).eq("id", setId).eq("status", "active");
+  }
 }
 
 // Upload a processed (webp) image buffer to storage under the user's folder.
 export async function uploadImageBuffer(userId, webpBuffer) {
   const sb = getSupabase();
   if (!sb) throw new Error("Set storage is not configured.");
+
+  // Per-user image cap (abuse / cost guard). Best-effort: if the count can't be
+  // read we let the upload through rather than block on a transient error.
+  const { data: existing, error: listErr } = await sb.storage
+    .from(BUCKET)
+    .list(userId, { limit: UPLOAD_QUOTA + 1 });
+  if (!listErr && existing && existing.length >= UPLOAD_QUOTA) {
+    throw httpError(`You've reached the ${UPLOAD_QUOTA}-image upload limit. Delete some to add more.`, 403);
+  }
+
   const path = `${userId}/${randomUUID()}.webp`;
   const { error } = await sb.storage
     .from(BUCKET)

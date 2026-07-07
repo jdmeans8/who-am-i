@@ -355,3 +355,14 @@ input:focus, select:focus { outline: 2px solid var(--primary); border-color: var
 .myset-row { display: flex; align-items: center; gap: 12px; padding: 12px; }
 .myset-info { flex: 1; }
 .myset-actions { display: flex; gap: 2px; flex-wrap: wrap; justify-content: flex-end; }
+
+/* ---------- legal pages ---------- */
+
+.legal-links { display: flex; gap: 8px; justify-content: center; align-items: center; margin-top: 24px; color: var(--muted); font-size: 0.85rem; }
+.linklike { background: none; border: none; color: var(--muted); cursor: pointer; padding: 4px; font: inherit; text-decoration: underline; }
+.linklike:hover { color: var(--text); }
+.legal-body { line-height: 1.55; }
+.legal-body h3 { margin: 18px 0 6px; font-size: 1rem; }
+.legal-body p, .legal-body ul { margin: 8px 0; }
+.legal-body ul { padding-left: 20px; }
+.legal-body a { color: var(--primary-hover); }

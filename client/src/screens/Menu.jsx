@@ -6,6 +6,7 @@ import SetDetail from "./SetDetail.jsx";
 import SetBuilder from "./SetBuilder.jsx";
 import MySets from "./MySets.jsx";
 import CreateRoom from "./CreateRoom.jsx";
+import Legal from "./Legal.jsx";
 
 export default function Menu({ action, showToast }) {
   const { user } = useAuth();
@@ -50,6 +51,10 @@ export default function Menu({ action, showToast }) {
           showToast={showToast}
         />
       );
+    case "terms":
+      return <Legal kind="terms" onBack={home} />;
+    case "privacy":
+      return <Legal kind="privacy" onBack={home} />;
     default:
       return <Hub user={user} go={go} />;
   }
@@ -84,6 +89,16 @@ function Hub({ user, go }) {
           </button>
         )}
       </div>
+
+      <nav className="legal-links">
+        <button className="linklike" onClick={() => go("terms")}>
+          Terms
+        </button>
+        <span aria-hidden="true">·</span>
+        <button className="linklike" onClick={() => go("privacy")}>
+          Privacy
+        </button>
+      </nav>
     </div>
   );
 }
