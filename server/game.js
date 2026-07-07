@@ -86,6 +86,7 @@ class Room {
     this.round = null; // active game's play state (null in lobby)
     this.gameNumber = 0; // games played this session (for display)
     this.excluded = new Set(); // character names the host has hidden from this set
+    this.mode = "chat"; // "chat" (type Q&A) | "party" (talk out loud, pass turns)
     this.createdAt = Date.now();
     this.lastActivity = Date.now();
   }
@@ -262,6 +263,7 @@ class Room {
   askQuestion(playerId, text) {
     const r = this.round;
     if (this.phase !== "round") throw new GameError("No active game.");
+    if (this.mode === "party") throw new GameError("In Party mode, ask your question out loud.");
     if (this.currentTurnId() !== playerId) throw new GameError("It's not your turn.");
     if (r.pending) throw new GameError("A question is already on the table.");
     const clean = String(text || "").trim().slice(0, 140);
@@ -329,6 +331,18 @@ class Room {
     this._finishTurn(playerId);
     this.touch();
     return { correct, character: correct ? item.name : undefined };
+  }
+
+  // Party mode: the player asked their question out loud, so just end the turn.
+  // Spends a try, like asking does in Chat mode.
+  passTurn(playerId) {
+    const r = this.round;
+    if (this.phase !== "round") throw new GameError("No active game.");
+    if (this.mode !== "party") throw new GameError("Passing is only for Party mode.");
+    if (this.currentTurnId() !== playerId) throw new GameError("It's not your turn.");
+    r.triesUsed.set(playerId, (r.triesUsed.get(playerId) || 0) + 1);
+    this._finishTurn(playerId);
+    this.touch();
   }
 
   // Ends the asker's turn after the tally is shown → log question, next turn.
@@ -432,6 +446,14 @@ class Room {
     this.touch();
   }
 
+  setMode(byId, mode) {
+    if (byId !== this.hostId) throw new GameError("Only the host can change the mode.");
+    if (this.phase !== "lobby") throw new GameError("Change the mode from the lobby.");
+    if (mode !== "chat" && mode !== "party") throw new GameError("Unknown mode.");
+    this.mode = mode;
+    this.touch();
+  }
+
   setMaxTries(byId, n) {
     if (byId !== this.hostId) throw new GameError("Only the host can change settings.");
     if (this.phase !== "lobby") throw new GameError("Change the try limit from the lobby.");
@@ -492,6 +514,7 @@ class Room {
       youId: viewerId,
       hostId: this.hostId,
       set: { ...this.set },
+      mode: this.mode,
       settings: { ...this.settings },
       players: this.playerList().map((p) => ({
         id: p.id,

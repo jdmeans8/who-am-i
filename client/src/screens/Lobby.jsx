@@ -26,6 +26,7 @@ export default function Lobby({ state, action, leave }) {
         <p className="set-line">
           Set: <strong>{state.set.title}</strong>
           {hiddenCount > 0 && <span className="muted"> · {state.inPlayCount} in play</span>}
+          {state.mode === "party" && <span className="muted"> · 🎉 Party mode</span>}
         </p>
       )}
 
@@ -96,6 +97,23 @@ function HostControls({ state, action, enough, anyScores }) {
             <button className="btn btn-ghost small" onClick={() => setChanging(true)}>Change</button>
           </div>
         )}
+      </label>
+
+      <label className="field">
+        <span>Mode</span>
+        <div className="tabs">
+          <button className={state.mode === "chat" ? "active" : ""} onClick={() => action("setMode", { mode: "chat" })}>
+            💬 Chat
+          </button>
+          <button className={state.mode === "party" ? "active" : ""} onClick={() => action("setMode", { mode: "party" })}>
+            🎉 Party
+          </button>
+        </div>
+        <span className="muted small">
+          {state.mode === "party"
+            ? "Talking out loud / on a call — no typing questions."
+            : "Everyone types their questions & answers in the app."}
+        </span>
       </label>
 
       <label className="field">

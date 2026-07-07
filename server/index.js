@@ -311,6 +311,7 @@ io.on("connection", (socket) => {
     })
   );
   socket.on("setMaxTries", ({ maxTries } = {}, ack) => handle(socket, ack, (room, player) => room.setMaxTries(player.id, maxTries)));
+  socket.on("setMode", ({ mode } = {}, ack) => handle(socket, ack, (room, player) => room.setMode(player.id, mode)));
   socket.on("setSet", async ({ setId } = {}, ack) => {
     try {
       const { code, playerId } = socket.data;
@@ -332,6 +333,7 @@ io.on("connection", (socket) => {
   socket.on("answer", ({ value } = {}, ack) => handle(socket, ack, (room, player) => room.answer(player.id, value)));
   socket.on("guess", ({ text } = {}, ack) => handle(socket, ack, (room, player) => room.guess(player.id, text)));
   socket.on("pass", (_p, ack) => handle(socket, ack, (room, player) => room.pass(player.id)));
+  socket.on("passTurn", (_p, ack) => handle(socket, ack, (room, player) => room.passTurn(player.id)));
   socket.on("giveUp", (_p, ack) => handle(socket, ack, (room, player) => room.giveUp(player.id)));
   socket.on("endGame", (_p, ack) => handle(socket, ack, (room, player) => room.endGameEarly(player.id)));
   socket.on("backToLobby", (_p, ack) => handle(socket, ack, (room, player) => room.backToLobby(player.id)));

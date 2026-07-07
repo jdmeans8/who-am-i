@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import CharacterImage from "../components/CharacterImage.jsx";
 
 export default function Game({ state, action, leave }) {
@@ -27,13 +27,13 @@ export default function Game({ state, action, leave }) {
 
       <Board board={board(r)} youId={state.youId} />
 
-      <ActionArea
-        state={state}
-        r={r}
-        action={action}
-        youAreAsker={youAreAsker}
-        youOut={youOut}
-      />
+      {state.mode === "party" ? (
+        <PartyActionArea r={r} action={action} youOut={youOut} currentName={currentName} />
+      ) : (
+        <ActionArea state={state} r={r} action={action} youAreAsker={youAreAsker} youOut={youOut} />
+      )}
+
+      <Notepad code={state.code} gameNumber={r.gameNumber} />
 
       <QuestionLog log={r.log} />
 
@@ -258,6 +258,88 @@ function Tally({ yes, no }) {
       <span className="tally-yes">{yes} Yes</span>
       <span className="tally-no">{no} No</span>
     </div>
+  );
+}
+
+// Party mode: questions are spoken aloud. On your turn you pass (after asking
+// out loud) or guess — no typing questions, no in-app answers.
+function PartyActionArea({ r, action, youOut, currentName }) {
+  const [guess, setGuess] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  if (r.yourTurn && !youOut) {
+    async function submitGuess() {
+      if (!guess.trim()) return;
+      setBusy(true);
+      const res = await action("guess", { text: guess.trim() });
+      setBusy(false);
+      if (res.ok) setGuess("");
+    }
+    return (
+      <div className="card action">
+        <p className="muted small">Your turn — ask your question out loud, then pass. Or make a guess.</p>
+        <button className="btn btn-primary" disabled={busy} onClick={() => action("passTurn")}>
+          I asked — pass turn
+        </button>
+        <div className="or">or</div>
+        <label className="field">
+          <span>Guess who you are</span>
+          <div className="row">
+            <input
+              maxLength={40}
+              value={guess}
+              onChange={(e) => setGuess(e.target.value)}
+              placeholder="Type a name…"
+              onKeyDown={(e) => e.key === "Enter" && submitGuess()}
+            />
+            <button className="btn btn-yes narrow" disabled={busy || !guess.trim()} onClick={submitGuess}>
+              Guess
+            </button>
+          </div>
+        </label>
+      </div>
+    );
+  }
+  return (
+    <div className="card action idle">
+      <p className="muted">
+        {youOut ? "You're done this game — enjoy the rest!" : `${currentName || "Someone"} is up — listen for their question.`}
+      </p>
+    </div>
+  );
+}
+
+// Private, per-game scratchpad kept only in this browser (never sent to the server).
+function Notepad({ code, gameNumber }) {
+  const key = `whoami.notepad.${code}.${gameNumber}`;
+  const [notes, setNotes] = useState("");
+
+  useEffect(() => {
+    try {
+      setNotes(localStorage.getItem(key) || "");
+    } catch {
+      setNotes("");
+    }
+  }, [key]);
+
+  function update(v) {
+    setNotes(v);
+    try {
+      localStorage.setItem(key, v);
+    } catch {}
+  }
+
+  return (
+    <details className="card notepad">
+      <summary>📝 My notes (private)</summary>
+      <textarea
+        className="notepad-text"
+        value={notes}
+        onChange={(e) => update(e.target.value)}
+        placeholder="Jot down what you've asked and the answers…"
+        rows={5}
+      />
+    </details>
   );
 }
 

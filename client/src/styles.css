@@ -225,6 +225,9 @@ input:focus, select:focus { outline: 2px solid var(--primary); border-color: var
 .tally-yes { background: rgba(34, 197, 94, 0.18); color: var(--yes); }
 .tally-no { background: rgba(239, 68, 68, 0.18); color: var(--no); }
 
+.notepad summary { cursor: pointer; font-weight: 600; color: var(--muted); }
+.notepad-text { margin-top: 10px; resize: vertical; font-family: inherit; line-height: 1.4; }
+
 .log summary { cursor: pointer; font-weight: 600; color: var(--muted); }
 .log ul { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .log li { display: flex; gap: 8px; align-items: baseline; font-size: 0.85rem; flex-wrap: wrap; }
