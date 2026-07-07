@@ -81,9 +81,10 @@ class Room {
     this.players = new Map(); // playerId -> player (insertion order = seat order)
     this.set = { id: set.id, title: set.title };
     this.items = set.items; // [{ name, aliases, image }]
-    this.settings = { totalRounds: 3 };
-    this.phase = "lobby"; // lobby | round | roundSummary | gameOver
-    this.round = null;
+    this.settings = { maxTries: 10 }; // per-player turn cap; 0 = unlimited
+    this.phase = "lobby"; // lobby | round (active game) | gameOver
+    this.round = null; // active game's play state (null in lobby)
+    this.gameNumber = 0; // games played this session (for display)
     this.createdAt = Date.now();
     this.lastActivity = Date.now();
   }
@@ -131,13 +132,20 @@ class Room {
     return this.players.get(id) || null;
   }
 
-  // ---------- round lifecycle ----------
+  // ---------- game lifecycle ----------
 
-  startRound(byId) {
+  // Host swaps the character set between games (lobby only).
+  applySet(byId, set) {
+    if (byId !== this.hostId) throw new GameError("Only the host can change the set.");
+    if (this.phase !== "lobby") throw new GameError("Change the set from the lobby.");
+    this.set = { id: set.id, title: set.title };
+    this.items = set.items;
+    this.touch();
+  }
+
+  startGame(byId) {
     if (byId !== this.hostId) throw new GameError("Only the host can start.");
-    if (this.phase !== "lobby" && this.phase !== "roundSummary") {
-      throw new GameError("Can't start a round right now.");
-    }
+    if (this.phase !== "lobby") throw new GameError("Can only start a game from the lobby.");
     const players = this.playerList();
     if (players.length < MIN_PLAYERS) {
       throw new GameError(`Need at least ${MIN_PLAYERS} players to start.`);
@@ -146,20 +154,22 @@ class Room {
       throw new GameError("This set doesn't have enough characters for that many players.");
     }
 
-    const number = this.round ? this.round.number + 1 : 1;
+    this.gameNumber += 1;
     const picks = shuffle(this.items).slice(0, players.length);
     const assignments = new Map(); // playerId -> item { name, aliases, image }
     players.forEach((p, i) => assignments.set(p.id, picks[i]));
 
     this.round = {
-      number,
+      number: this.gameNumber,
       assignments,
       turnOrder: players.map((p) => p.id),
       currentTurnIdx: 0,
       finishedOrder: [], // playerIds in order they guessed correctly
-      questionsAsked: new Map(players.map((p) => [p.id, 0])),
+      gaveUp: new Set(), // playerIds who bowed out
+      outOfTries: new Set(), // playerIds who used all their tries without solving
+      triesUsed: new Map(players.map((p) => [p.id, 0])), // turns (ask or guess) spent
       pending: null, // { askerId, text, answers: Map<pid,'yes'|'no'>, revealed, yes, no }
-      log: [], // { askerName, text, yes, no }
+      log: [], // { type:'question'|'guess', name, text, ... }
       results: null,
     };
     this.phase = "round";
@@ -171,9 +181,38 @@ class Room {
     return this.round?.finishedOrder.includes(playerId);
   }
 
+  hasGivenUp(playerId) {
+    return this.round?.gaveUp.has(playerId) || false;
+  }
+
+  isOutOfTries(playerId) {
+    return this.round?.outOfTries.has(playerId) || false;
+  }
+
+  // Out of the guessing race (solved, gave up, or out of tries). Still answers.
+  isOut(playerId) {
+    return this.isFinished(playerId) || this.hasGivenUp(playerId) || this.isOutOfTries(playerId);
+  }
+
+  // Tries remaining for a player (Infinity when the cap is unlimited).
+  triesLeft(playerId) {
+    const max = this.settings.maxTries;
+    if (!max) return Infinity; // 0 = unlimited
+    return Math.max(max - (this.round.triesUsed.get(playerId) || 0), 0);
+  }
+
+  // Called when a player's turn action fully resolves: if they've exhausted
+  // their tries without solving, they're out. Then advance the turn.
+  _finishTurn(playerId) {
+    if (!this.isFinished(playerId) && !this.isOut(playerId) && this.triesLeft(playerId) <= 0) {
+      this.round.outOfTries.add(playerId);
+    }
+    this._advanceTurn();
+  }
+
   _eligible(playerId) {
     const p = this.getPlayer(playerId);
-    return !!p && p.connected && !this.isFinished(playerId);
+    return !!p && p.connected && !this.isOut(playerId);
   }
 
   currentTurnId() {
@@ -196,8 +235,8 @@ class Room {
       }
     }
     // nobody eligible to take a turn
-    const allFinished = r.turnOrder.every((id) => this.isFinished(id));
-    if (allFinished) this._endRound();
+    const allOut = r.turnOrder.every((id) => this.isOut(id));
+    if (allOut) this._endGame();
   }
 
   _ensureValidTurn() {
@@ -207,12 +246,13 @@ class Room {
 
   askQuestion(playerId, text) {
     const r = this.round;
-    if (this.phase !== "round") throw new GameError("No active round.");
+    if (this.phase !== "round") throw new GameError("No active game.");
     if (this.currentTurnId() !== playerId) throw new GameError("It's not your turn.");
     if (r.pending) throw new GameError("A question is already on the table.");
     const clean = String(text || "").trim().slice(0, 140);
     if (!clean) throw new GameError("Type a yes/no question first.");
 
+    r.triesUsed.set(playerId, (r.triesUsed.get(playerId) || 0) + 1); // asking spends a try
     r.pending = { askerId: playerId, text: clean, answers: new Map(), revealed: false, yes: 0, no: 0 };
     this._maybeReveal();
     this.touch();
@@ -252,74 +292,95 @@ class Room {
       r.pending.revealed = true;
       r.pending.yes = yes;
       r.pending.no = no;
-      r.questionsAsked.set(r.pending.askerId, (r.questionsAsked.get(r.pending.askerId) || 0) + 1);
     }
   }
 
-  // Asker submits an optional guess after the tally is revealed, then the turn passes.
+  // A guess is its own turn action ("Am I X?") — an alternative to asking.
+  // Spends a try; correct = solved, wrong = turn passes.
   guess(playerId, text) {
     const r = this.round;
-    if (this.phase !== "round" || !r.pending) throw new GameError("You can only guess on your turn, after asking.");
-    if (playerId !== r.pending.askerId) throw new GameError("Only the asker can guess now.");
-    if (!r.pending.revealed) throw new GameError("Wait for everyone to answer first.");
+    if (this.phase !== "round") throw new GameError("No active game.");
+    if (this.currentTurnId() !== playerId) throw new GameError("It's not your turn.");
+    if (r.pending) throw new GameError("Finish the current question first.");
+    const clean = String(text || "").trim().slice(0, 60);
+    if (!clean) throw new GameError("Type who you think you are.");
 
+    r.triesUsed.set(playerId, (r.triesUsed.get(playerId) || 0) + 1); // guessing spends a try
     const item = r.assignments.get(playerId);
-    const correct = item ? guessMatches(text, item) : false;
-    let result;
-    if (correct) {
-      r.finishedOrder.push(playerId);
-      result = { correct: true, character: item.name };
-    } else {
-      result = { correct: false }; // no penalty
-    }
-    this._closeQuestionAndPass();
-    return result;
+    const correct = item ? guessMatches(clean, item) : false;
+    if (correct) r.finishedOrder.push(playerId);
+
+    r.log.unshift({ type: "guess", name: this.getPlayer(playerId)?.name || "?", text: clean, correct });
+    this._finishTurn(playerId);
+    this.touch();
+    return { correct, character: correct ? item.name : undefined };
   }
 
-  // Asker passes without guessing (or after a wrong guess) → log question, next turn.
+  // Ends the asker's turn after the tally is shown → log question, next turn.
   pass(playerId) {
     const r = this.round;
     if (this.phase !== "round" || !r.pending) throw new GameError("Nothing to pass right now.");
     if (playerId !== r.pending.askerId) throw new GameError("It's not your turn.");
-    if (!r.pending.revealed) throw new GameError("Wait for answers before passing.");
-    this._closeQuestionAndPass();
+    if (!r.pending.revealed) throw new GameError("Wait for answers before ending your turn.");
+    this._closeQuestion();
+    this._finishTurn(playerId);
+    this.touch();
   }
 
-  _closeQuestionAndPass() {
+  // Bow out of the game: 0 points, your character is revealed, you keep answering.
+  giveUp(playerId) {
+    const r = this.round;
+    if (this.phase !== "round") throw new GameError("No active game.");
+    if (!r.turnOrder.includes(playerId)) throw new GameError("You're not in this game.");
+    if (this.isOut(playerId)) throw new GameError("You're already done this game.");
+    r.gaveUp.add(playerId);
+
+    if (r.pending && r.pending.askerId === playerId) {
+      // Their own question is on the table: log it if answered, else discard it.
+      if (r.pending.revealed) this._closeQuestion();
+      else r.pending = null;
+      this._advanceTurn();
+    } else if (this.currentTurnId() === playerId) {
+      this._advanceTurn();
+    } else if (r.turnOrder.every((id) => this.isOut(id))) {
+      this._endGame();
+    }
+    this.touch();
+  }
+
+  // Log the resolved question and clear it. Caller advances the turn.
+  _closeQuestion() {
     const r = this.round;
     const asker = this.getPlayer(r.pending.askerId);
     r.log.unshift({
-      askerName: asker ? asker.name : "?",
+      type: "question",
+      name: asker ? asker.name : "?",
       text: r.pending.text,
       yes: r.pending.yes,
       no: r.pending.no,
     });
     r.pending = null;
-    this._advanceTurn();
-    this.touch();
   }
 
-  _endRound() {
+  _endGame() {
     const r = this.round;
     const playerCount = r.turnOrder.length;
     const results = [];
     for (const id of r.turnOrder) {
       const p = this.getPlayer(id);
       const placement = r.finishedOrder.indexOf(id); // 0-based, -1 if never finished
-      let points = 0;
-      if (placement >= 0) {
-        const orderPts = playerCount - placement; // 1st = playerCount, etc.
-        const q = r.questionsAsked.get(id) || 0;
-        const bonus = q <= 3 ? 3 : q <= 6 ? 1 : 0;
-        points = orderPts + bonus;
-      }
-      if (p) p.score += points;
+      // First solver gets (players - 1) points, decrementing by finish order;
+      // the last solver, give-ups, out-of-tries, and non-solvers get 0.
+      const points = placement >= 0 ? Math.max(playerCount - 1 - placement, 0) : 0;
+      if (p) p.score += points; // cumulative across games (reset only by the host)
       const item = r.assignments.get(id);
       results.push({
         playerId: id,
         name: p ? p.name : "?",
         placement: placement >= 0 ? placement + 1 : null,
-        questions: r.questionsAsked.get(id) || 0,
+        gaveUp: r.gaveUp.has(id),
+        outOfTries: r.outOfTries.has(id),
+        tries: r.triesUsed.get(id) || 0,
         character: item?.name || "?",
         image: item?.image || null,
         points,
@@ -329,29 +390,40 @@ class Room {
     results.sort((a, b) => b.total - a.total);
     r.results = results;
     r.pending = null;
-    this.phase = r.number >= this.settings.totalRounds ? "gameOver" : "roundSummary";
+    this.phase = "gameOver";
     this.touch();
   }
 
-  endRoundEarly(byId) {
-    if (byId !== this.hostId) throw new GameError("Only the host can end the round.");
-    if (this.phase !== "round") throw new GameError("No round in progress.");
-    this._endRound();
+  // Host ends the current game early (jumps to the summary).
+  endGameEarly(byId) {
+    if (byId !== this.hostId) throw new GameError("Only the host can end the game.");
+    if (this.phase !== "round") throw new GameError("No game in progress.");
+    this._endGame();
   }
 
+  // From the game summary, return everyone to the lobby (scores persist).
   backToLobby(byId) {
     if (byId !== this.hostId) throw new GameError("Only the host can do that.");
+    if (this.phase !== "gameOver") throw new GameError("The game isn't over yet.");
     this.phase = "lobby";
     this.round = null;
+    this.touch();
+  }
+
+  resetScores(byId) {
+    if (byId !== this.hostId) throw new GameError("Only the host can reset scores.");
+    if (this.phase !== "lobby") throw new GameError("Reset scores from the lobby.");
     for (const p of this.players.values()) p.score = 0;
     this.touch();
   }
 
-  setRounds(byId, n) {
+  setMaxTries(byId, n) {
     if (byId !== this.hostId) throw new GameError("Only the host can change settings.");
-    if (this.phase !== "lobby") throw new GameError("Change rounds before starting.");
-    const val = Math.max(1, Math.min(10, parseInt(n, 10) || 3));
-    this.settings.totalRounds = val;
+    if (this.phase !== "lobby") throw new GameError("Change the try limit from the lobby.");
+    const parsed = parseInt(n, 10);
+    // 0 = unlimited; otherwise clamp to a sane range.
+    const val = parsed === 0 ? 0 : Number.isNaN(parsed) ? 10 : Math.max(1, Math.min(50, parsed));
+    this.settings.maxTries = val;
     this.touch();
   }
 
@@ -419,9 +491,9 @@ class Room {
       maxPlayers: MAX_PLAYERS,
     };
 
-    if (this.round && (this.phase === "round" || this.phase === "roundSummary" || this.phase === "gameOver")) {
+    if (this.round && (this.phase === "round" || this.phase === "gameOver")) {
       const r = this.round;
-      const revealAll = this.phase === "roundSummary" || this.phase === "gameOver";
+      const revealAll = this.phase === "gameOver";
       const currentTurnId = this.currentTurnId();
 
       const board = r.turnOrder
@@ -429,14 +501,19 @@ class Room {
         .map((id) => {
           const p = this.getPlayer(id);
           const finished = this.isFinished(id);
-          // A viewer sees a character if: it's not their own, OR they've finished, OR round is over.
-          const canSee = revealAll || finished || id !== viewerId;
+          const gaveUp = this.hasGivenUp(id);
+          const outOfTries = this.isOutOfTries(id);
+          // A viewer sees a character if: it's not their own, OR that player is
+          // out (solved / gave up / out of tries), OR the game is over.
+          const canSee = revealAll || finished || gaveUp || outOfTries || id !== viewerId;
           const item = r.assignments.get(id);
           return {
             playerId: id,
             name: p.name,
             connected: p.connected,
             finished,
+            gaveUp,
+            outOfTries,
             isCurrentTurn: id === currentTurnId,
             character: canSee ? item?.name || null : null,
             image: canSee ? item?.image || null : null,
@@ -461,8 +538,9 @@ class Room {
       }
 
       state.round = {
-        number: r.number,
-        totalRounds: this.settings.totalRounds,
+        gameNumber: r.number,
+        maxTries: this.settings.maxTries,
+        yourTriesLeft: this.settings.maxTries ? this.triesLeft(viewerId) : null,
         currentTurnId,
         yourTurn: currentTurnId === viewerId,
         board,

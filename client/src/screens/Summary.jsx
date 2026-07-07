@@ -5,24 +5,23 @@ export default function Summary({ state, action, leave }) {
   const r = state.round;
   const you = state.players.find((p) => p.id === state.youId);
   const isHost = you?.isHost;
-  const gameOver = state.phase === "gameOver";
   const results = r?.results || [];
-  const winner = gameOver ? results[0] : null;
+  const winner = results[0];
+
+  const statusLabel = (res) =>
+    res.placement
+      ? ` · solved #${res.placement}`
+      : res.gaveUp
+      ? " · gave up 🏳️"
+      : res.outOfTries
+      ? " · out of tries ⌛"
+      : " · didn't solve";
 
   return (
     <div className="screen summary">
       <header className="summary-header">
-        {gameOver ? (
-          <>
-            <h1>🏆 Final results</h1>
-            {winner && <p className="winner-line">{winner.name} wins with {winner.total} points!</p>}
-          </>
-        ) : (
-          <>
-            <h1>Round {r.number} complete</h1>
-            <p className="muted">Standings after round {r.number} of {r.totalRounds}</p>
-          </>
-        )}
+        <h1>Game {r.gameNumber} complete</h1>
+        {winner && <p className="winner-line">{winner.name} leads with {winner.total} points!</p>}
       </header>
 
       <div className="card">
@@ -37,8 +36,8 @@ export default function Summary({ state, action, leave }) {
               <span className="sb-detail">
                 <CharacterImage name={res.character} image={res.image} size="sm" />
                 was <strong>{res.character}</strong>
-                {res.placement ? ` · solved #${res.placement}` : " · didn't solve"}
-                {` · ${res.questions}Q`}
+                {statusLabel(res)}
+                {` · ${res.tries} ${res.tries === 1 ? "try" : "tries"}`}
               </span>
               <span className="sb-points">
                 +{res.points}
@@ -50,21 +49,11 @@ export default function Summary({ state, action, leave }) {
       </div>
 
       {isHost ? (
-        <div className="stack">
-          {gameOver ? (
-            <button className="btn btn-primary" onClick={() => action("backToLobby")}>
-              Play again
-            </button>
-          ) : (
-            <button className="btn btn-primary" onClick={() => action("nextRound")}>
-              Start round {r.number + 1}
-            </button>
-          )}
-        </div>
+        <button className="btn btn-primary" onClick={() => action("backToLobby")}>
+          Back to lobby
+        </button>
       ) : (
-        <p className="waiting">
-          {gameOver ? "Waiting for the host…" : "Waiting for the host to start the next round…"}
-        </p>
+        <p className="waiting">Waiting for the host to return to the lobby…</p>
       )}
 
       <button className="btn btn-ghost small" onClick={leave}>

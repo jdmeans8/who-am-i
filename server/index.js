@@ -304,19 +304,35 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("startRound", (_p, ack) =>
+  socket.on("startGame", (_p, ack) =>
     handle(socket, ack, (room, player) => {
-      room.startRound(player.id);
-      if (room.round?.number === 1) incrementPlayCount(room.set.id); // fire-and-forget
+      room.startGame(player.id);
+      incrementPlayCount(room.set.id); // fire-and-forget (per game played)
     })
   );
-  socket.on("nextRound", (_p, ack) => handle(socket, ack, (room, player) => room.startRound(player.id)));
-  socket.on("setRounds", ({ rounds } = {}, ack) => handle(socket, ack, (room, player) => room.setRounds(player.id, rounds)));
+  socket.on("setMaxTries", ({ maxTries } = {}, ack) => handle(socket, ack, (room, player) => room.setMaxTries(player.id, maxTries)));
+  socket.on("setSet", async ({ setId } = {}, ack) => {
+    try {
+      const { code, playerId } = socket.data;
+      const room = manager.getRoom(code);
+      if (!room) throw new GameError("Room not found — it may have closed.");
+      if (!room.getPlayer(playerId)) throw new GameError("You're no longer in this room.");
+      const set = await resolveSet(setId);
+      if (!set || !set.items || set.items.length < 2) throw new GameError("That set needs at least 2 characters.");
+      room.applySet(playerId, set);
+      broadcastRoom(room);
+      ack?.({ ok: true });
+    } catch (err) {
+      ack?.({ ok: false, error: err instanceof GameError ? err.message : "Could not change the set." });
+    }
+  });
+  socket.on("resetScores", (_p, ack) => handle(socket, ack, (room, player) => room.resetScores(player.id)));
   socket.on("ask", ({ text } = {}, ack) => handle(socket, ack, (room, player) => room.askQuestion(player.id, text)));
   socket.on("answer", ({ value } = {}, ack) => handle(socket, ack, (room, player) => room.answer(player.id, value)));
   socket.on("guess", ({ text } = {}, ack) => handle(socket, ack, (room, player) => room.guess(player.id, text)));
   socket.on("pass", (_p, ack) => handle(socket, ack, (room, player) => room.pass(player.id)));
-  socket.on("endRound", (_p, ack) => handle(socket, ack, (room, player) => room.endRoundEarly(player.id)));
+  socket.on("giveUp", (_p, ack) => handle(socket, ack, (room, player) => room.giveUp(player.id)));
+  socket.on("endGame", (_p, ack) => handle(socket, ack, (room, player) => room.endGameEarly(player.id)));
   socket.on("backToLobby", (_p, ack) => handle(socket, ack, (room, player) => room.backToLobby(player.id)));
 
   socket.on("leave", (_p, ack) => {

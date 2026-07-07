@@ -5,7 +5,11 @@ export default function Game({ state, action, leave }) {
   const r = state.round;
   const you = state.players.find((p) => p.id === state.youId);
   const isHost = you?.isHost;
-  const youFinished = r.board.find((b) => b.playerId === state.youId)?.finished;
+  const yourCard = r.board.find((b) => b.playerId === state.youId);
+  const youFinished = yourCard?.finished;
+  const youGaveUp = yourCard?.gaveUp;
+  const youOutOfTries = yourCard?.outOfTries;
+  const youOut = youFinished || youGaveUp || youOutOfTries;
 
   const currentName = r.board.find((b) => b.playerId === r.currentTurnId)?.name;
   const pending = r.pending;
@@ -14,8 +18,11 @@ export default function Game({ state, action, leave }) {
   return (
     <div className="screen game">
       <header className="game-header">
-        <div className="round-pill">Round {r.number}/{r.totalRounds}</div>
-        <TurnBanner yourTurn={r.yourTurn} currentName={currentName} youFinished={youFinished} pending={pending} youAreAsker={youAreAsker} />
+        <div className="round-pill">
+          Game {r.gameNumber}
+          {r.maxTries ? ` · ${r.yourTriesLeft} ${r.yourTriesLeft === 1 ? "try" : "tries"} left` : ""}
+        </div>
+        <TurnBanner yourTurn={r.yourTurn} currentName={currentName} youFinished={youFinished} youGaveUp={youGaveUp} youOutOfTries={youOutOfTries} pending={pending} youAreAsker={youAreAsker} />
       </header>
 
       <Board board={board(r)} youId={state.youId} />
@@ -25,15 +32,27 @@ export default function Game({ state, action, leave }) {
         r={r}
         action={action}
         youAreAsker={youAreAsker}
-        youFinished={youFinished}
+        youOut={youOut}
       />
 
       <QuestionLog log={r.log} />
 
       <div className="game-foot">
         {isHost && (
-          <button className="btn btn-ghost small" onClick={() => action("endRound")}>
-            End round
+          <button className="btn btn-ghost small" onClick={() => action("endGame")}>
+            End game
+          </button>
+        )}
+        {!youOut && (
+          <button
+            className="btn btn-ghost small"
+            onClick={() => {
+              if (confirm("Give up this round? You'll score 0 points and your character will be revealed.")) {
+                action("giveUp");
+              }
+            }}
+          >
+            Give up
           </button>
         )}
         <button className="btn btn-ghost small" onClick={leave}>
@@ -48,15 +67,17 @@ function board(r) {
   return r.board;
 }
 
-function TurnBanner({ yourTurn, currentName, youFinished, pending, youAreAsker }) {
+function TurnBanner({ yourTurn, currentName, youFinished, youGaveUp, youOutOfTries, pending, youAreAsker }) {
   if (pending) {
     if (youAreAsker) {
       return <div className="turn-banner me">Your question is out — {pending.revealed ? "here are the answers" : "waiting for answers"}</div>;
     }
     return <div className="turn-banner">{pending.askerName} asked a question</div>;
   }
-  if (yourTurn) return <div className="turn-banner me">Your turn — ask a question</div>;
+  if (yourTurn) return <div className="turn-banner me">Your turn — ask or guess</div>;
   if (youFinished) return <div className="turn-banner done">You solved it! Keep answering for others.</div>;
+  if (youGaveUp) return <div className="turn-banner">You gave up — keep answering for the others.</div>;
+  if (youOutOfTries) return <div className="turn-banner">Out of tries — keep answering for the others.</div>;
   return <div className="turn-banner">{currentName ? `${currentName}'s turn` : "Waiting…"}</div>;
 }
 
@@ -74,6 +95,7 @@ function Board({ board, youId }) {
               isYou ? "you" : "",
               b.isCurrentTurn ? "current" : "",
               b.finished ? "finished" : "",
+              (b.gaveUp || b.outOfTries) ? "gaveup" : "",
               b.connected ? "" : "offline",
             ].join(" ")}
           >
@@ -85,6 +107,8 @@ function Board({ board, youId }) {
               {b.name}
               {isYou && " (you)"}
               {b.finished && " ✓"}
+              {b.gaveUp && " 🏳️"}
+              {b.outOfTries && " ⌛"}
               {b.isCurrentTurn && !b.finished && <span className="turn-dot" />}
             </div>
           </div>
@@ -94,13 +118,13 @@ function Board({ board, youId }) {
   );
 }
 
-function ActionArea({ state, r, action, youAreAsker, youFinished }) {
+function ActionArea({ state, r, action, youAreAsker, youOut }) {
   const [question, setQuestion] = useState("");
   const [guess, setGuess] = useState("");
   const [busy, setBusy] = useState(false);
   const pending = r.pending;
 
-  // 1) Your turn, no question on the table yet → ask.
+  // 1) Your turn, nothing pending → ask a question OR make a guess (one or the other).
   if (r.yourTurn && !pending) {
     async function ask() {
       if (!question.trim()) return;
@@ -109,22 +133,48 @@ function ActionArea({ state, r, action, youAreAsker, youFinished }) {
       setBusy(false);
       if (res.ok) setQuestion("");
     }
+    async function submitGuess() {
+      if (!guess.trim()) return;
+      setBusy(true);
+      const res = await action("guess", { text: guess.trim() });
+      setBusy(false);
+      if (res.ok) setGuess("");
+    }
     return (
       <div className="card action">
+        <p className="muted small">Your turn — do one: ask a question, or guess who you are.</p>
         <label className="field">
           <span>Ask a yes/no question</span>
-          <input
-            autoFocus
-            maxLength={140}
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            placeholder="Am I a musician?"
-            onKeyDown={(e) => e.key === "Enter" && ask()}
-          />
+          <div className="row">
+            <input
+              autoFocus
+              maxLength={140}
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              placeholder="Am I a musician?"
+              onKeyDown={(e) => e.key === "Enter" && ask()}
+            />
+            <button className="btn btn-primary narrow" disabled={busy || !question.trim()} onClick={ask}>
+              Ask
+            </button>
+          </div>
         </label>
-        <button className="btn btn-primary" disabled={busy || !question.trim()} onClick={ask}>
-          Ask the group
-        </button>
+        <div className="or">or</div>
+        <label className="field">
+          <span>Guess who you are</span>
+          <div className="row">
+            <input
+              maxLength={40}
+              value={guess}
+              onChange={(e) => setGuess(e.target.value)}
+              placeholder="Type a name…"
+              onKeyDown={(e) => e.key === "Enter" && submitGuess()}
+            />
+            <button className="btn btn-yes narrow" disabled={busy || !guess.trim()} onClick={submitGuess}>
+              Guess
+            </button>
+          </div>
+        </label>
       </div>
     );
   }
@@ -141,38 +191,13 @@ function ActionArea({ state, r, action, youAreAsker, youFinished }) {
         </div>
       );
     }
-    async function submitGuess() {
-      if (!guess.trim()) return;
-      setBusy(true);
-      const res = await action("guess", { text: guess.trim() });
-      setBusy(false);
-      if (res.ok) {
-        setGuess("");
-        // correctness surfaced via state change; give quick feedback too
-      }
-    }
     return (
       <div className="card action">
         <p className="q-echo">“{pending.text}”</p>
         <Tally yes={pending.yes} no={pending.no} />
-        <label className="field">
-          <span>Guess who you are (optional)</span>
-          <input
-            maxLength={40}
-            value={guess}
-            onChange={(e) => setGuess(e.target.value)}
-            placeholder="Type a name…"
-            onKeyDown={(e) => e.key === "Enter" && submitGuess()}
-          />
-        </label>
-        <div className="row">
-          <button className="btn btn-primary" disabled={busy || !guess.trim()} onClick={submitGuess}>
-            Guess
-          </button>
-          <button className="btn" disabled={busy} onClick={() => action("pass")}>
-            Pass turn
-          </button>
-        </div>
+        <button className="btn btn-primary" disabled={busy} onClick={() => action("pass")}>
+          End turn
+        </button>
       </div>
     );
   }
@@ -221,7 +246,7 @@ function ActionArea({ state, r, action, youAreAsker, youFinished }) {
   return (
     <div className="card action idle">
       <p className="muted">
-        {youFinished ? "You're done — sit tight and answer questions." : "Waiting for the current player…"}
+        {youOut ? "You're done this game — sit tight and answer questions." : "Waiting for the current player…"}
       </p>
     </div>
   );
@@ -240,13 +265,22 @@ function QuestionLog({ log }) {
   if (!log || log.length === 0) return null;
   return (
     <details className="card log">
-      <summary>Question history ({log.length})</summary>
+      <summary>History ({log.length})</summary>
       <ul>
-        {log.map((q, i) => (
+        {log.map((e, i) => (
           <li key={i}>
-            <span className="log-asker">{q.askerName}</span>
-            <span className="log-q">“{q.text}”</span>
-            <span className="log-res">{q.yes}✓ / {q.no}✗</span>
+            <span className="log-asker">{e.name}</span>
+            {e.type === "guess" ? (
+              <>
+                <span className="log-q">guessed “{e.text}”</span>
+                <span className="log-res">{e.correct ? "✓" : "✗"}</span>
+              </>
+            ) : (
+              <>
+                <span className="log-q">“{e.text}”</span>
+                <span className="log-res">{e.yes}✓ / {e.no}✗</span>
+              </>
+            )}
           </li>
         ))}
       </ul>

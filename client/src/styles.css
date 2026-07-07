@@ -140,6 +140,11 @@ input:focus, select:focus { outline: 2px solid var(--primary); border-color: var
 .tag { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; background: var(--card-2); color: var(--muted); padding: 2px 8px; border-radius: 20px; }
 .tag-you { background: var(--primary); color: #fff; }
 .waiting { text-align: center; color: var(--muted); }
+.lobby-score { margin-left: auto; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--accent); }
+.set-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.set-row strong { flex: 1; }
+.btn.narrow { width: auto; flex: none; padding: 12px 16px; }
+.action .row input { flex: 1; }
 
 /* ---------- game ---------- */
 
@@ -168,6 +173,7 @@ input:focus, select:focus { outline: 2px solid var(--primary); border-color: var
 .char-card.current { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.25); }
 .char-card.you { background: repeating-linear-gradient(135deg, #1e293b, #1e293b 10px, #222f47 10px, #222f47 20px); }
 .char-card.finished { border-color: var(--yes); }
+.char-card.gaveup { border-style: dashed; opacity: 0.85; }
 .char-card.offline { opacity: 0.45; }
 .char-name { font-size: 1.02rem; font-weight: 800; line-height: 1.2; }
 .char-owner { font-size: 0.78rem; color: var(--muted); display: flex; align-items: center; gap: 6px; justify-content: center; }
